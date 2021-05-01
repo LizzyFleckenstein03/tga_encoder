@@ -64,7 +64,13 @@ function image:encode_header()
 end
 
 function image:encode_data()
-	-- ToDo
+	for _, row in ipairs(self.pixels) do
+		for _, pixel in ipairs(row) do
+			self:write(1, row[3])
+			self:write(1, row[2])
+			self:write(1, row[1])
+		end
+	end
 end
 
 function image:encode()
