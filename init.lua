@@ -88,7 +88,7 @@ function image:encode()
 	-- no color map and image id data
 	-- encode data
 	self:encode_data()
-	-- no extension area or file footer
+	-- no extension area
 end
 
 function image:get_data()
