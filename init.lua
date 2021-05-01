@@ -1,8 +1,10 @@
 tga_encoder = {}
 
+local LUA_ARGS_LIMIT = 1000
+
 local image = setmetatable({}, {
 	__call = function(self, ...)
-		local t = setmetatable({}, {__index = image})
+		local t = setmetatable({}, {__index = self})
 		t:constructor(...)
 		return t
 	end,
@@ -10,53 +12,60 @@ local image = setmetatable({}, {
 
 function image:constructor(pixels)
 	self.bytes = {}
+	self.chunks = {self.bytes}
 	self.pixels = pixels
-	self.width = #pixles[1]
+	self.width = #pixels[1]
 	self.height = #pixels
 
 	self:encode()
 end
 
-function image:write(size, value)
-	-- TGA uses little endian encoding
-	local l = #self.bytes
+function image:insert(byte)
+	table.insert(self.bytes, byte)
+	if #self.bytes == LUA_ARGS_LIMIT then
+		self.bytes = {}
+		table.insert(self.chunks, self.bytes)
+	end
+end
+
+function image:littleendian(size, value)
 	for i = 1, size do
 		local byte = value % 256
 		value = value - byte
 		value = value / 256
-		self.bytes[l + i] = byte
+		self:insert(byte)
 	end
 end
 
 function image:encode_colormap_spec()
 	-- first entry index
-	self:write(2, 0)
+	self:littleendian(2, 0)
 	-- number of entries
-	self:write(2, 0)
+	self:littleendian(2, 0)
 	-- number of bits per pixel
-	self:write(1, 0)
+	self:insert(0)
 end
 
 function image:encode_image_spec()
 	-- X- and Y- origin
-	self:write(2, 0)
-	self:write(2, 0)
+	self:littleendian(2, 0)
+	self:littleendian(2, 0)
 	-- width and height
-	self:write(2, width)
-	self:write(2, height)
+	self:littleendian(2, self.width)
+	self:littleendian(2, self.height)
 	-- pixel depth
-	self:write(1, 24)
+	self:insert(24)
 	-- image descriptor
-	self:write(1, 0)
+	self:insert(0)
 end
 
 function image:encode_header()
 	-- id length
-	self:write(1, 0) -- no image id info
+	self:insert(0) -- no image id info
 	-- color map type
-	self:write(1, 0) -- no color map
+	self:insert(0) -- no color map
 	-- image type
-	self:write(1, 2) -- uncompressed true-color image
+	self:insert(2) -- uncompressed true-color image
 	-- color map specification
 	self:encode_colormap_spec()
 	-- image specification
@@ -66,9 +75,9 @@ end
 function image:encode_data()
 	for _, row in ipairs(self.pixels) do
 		for _, pixel in ipairs(row) do
-			self:write(1, row[3])
-			self:write(1, row[2])
-			self:write(1, row[1])
+			self:insert(pixel[3])
+			self:insert(pixel[2])
+			self:insert(pixel[1])
 		end
 	end
 end
@@ -82,10 +91,18 @@ function image:encode()
 	-- no extension area or file footer
 end
 
+function image:get_data()
+	local data = ""
+	for _, bytes in ipairs(self.chunks) do
+		data = data .. string.char(unpack(bytes))
+	end
+	return data .. string.char(0, 0, 0, 0) .. string.char(0, 0, 0, 0) .. "TRUEVISION-XFILE." .. string.char(0)
+end
+
 function image:save(filename)
-	self.data = self.data or string.char(unpack(self.bytes))
-	local f = assert(io.open(filename))
-	f:write(data)
+	self.data = self.data or self:get_data()
+	local f = assert(io.open(filename, "w"))
+	f:write(self.data)
 	f:close()
 end
 
